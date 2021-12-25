@@ -5,8 +5,8 @@ import { Chart, ChartKey } from './chart.interface';
 @Injectable()
 export class ChartService {
   constructor(
-    @InjectModel('chart')
-    private chartModel: Model<Chart, ChartKey>,
+    @InjectModel('Chart')
+    public chartModel: Model<Chart, ChartKey>,
   ) {}
 
   create(chart: Chart) {

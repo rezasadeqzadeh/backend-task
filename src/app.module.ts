@@ -3,25 +3,28 @@ import { DynamooseModule } from 'nestjs-dynamoose';
 import { ChartModule } from './chart/chart.module';
 import { ConfigModule } from '@nestjs/config';
 import { CollectorModule } from './collector/collector.module';
+import {config} from  "./config"
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [config]
+    }),
     DynamooseModule.forRoot({
       local: true,
-      aws: {
+      aws: {      
         region: 'us-east-1',
-        accessKeyId: 'DEFAULT_ACCESS_KEY',
-        secretAccessKey: 'DEFAULT_SECRET',
+        accessKeyId: 'temp',
+        secretAccessKey: 'temp',
       },
       model: {
-        create: true,
-        prefix: 'defi-',
-        suffix: '-table',
+        create: true
       },
     }),
     CollectorModule,
     ChartModule,
+    
   ],
 })
 export class ApplicationModule {}

@@ -1,9 +1,9 @@
-export interface ChartKey {
+export interface ChartKey {// holds the hashKey/partition key
   id: string;
-  timestamp: Date;
+  timestamp: number;
 }
 
 export interface Chart extends ChartKey {
-  value: string;
+  value: number;
   address: string;
 }

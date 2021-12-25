@@ -1,6 +1,7 @@
-import { Schema } from 'dynamoose';
+import * as dynamoose from "dynamoose";
 
-export const ChartSchema = new Schema({
+
+export const ChartSchema = new dynamoose.Schema({
   id: {
     // any unique id of your choice
     // i.e. address-timestamp
@@ -10,11 +11,11 @@ export const ChartSchema = new Schema({
   timestamp: {
     // the timestamp of the current hour always normalized to
     // the start minute of each hour i.e. 08:00-08:59 = 08:00:00
-    type: Date,
+    type: Number,
   },
   value: {
     // the supply amount in the current hour
-    type: String,
+    type: Number,
   },
   address: {
     // the address of the supply contract
@@ -24,5 +25,5 @@ export const ChartSchema = new Schema({
       global: true,
       rangeKey: 'timestamp',
     },
-  },
+  }
 });
