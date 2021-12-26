@@ -17,20 +17,18 @@ import { TransactionSupport } from 'nestjs-dynamoose';
 import { Chart, ChartKey } from 'src/chart/chart.interface';
 import { ethers } from 'ethers';
 import { formatEther } from 'ethers/lib/utils';
-
-const getLatestIndexedBlock = `
-query {
-  indexingStatusForCurrentVersion(subgraphName: "graphprotocol/compound-v2") { chains { latestBlock { hash number }}}
-}
-`;
+import { LocalPersistService } from 'src/localpersist/localpersist.service';
 
 @Injectable()
 export class CollectorService extends TransactionSupport implements OnModuleInit {
   clientMetadata: ApolloClient<NormalizedCacheObject>;
-  // add your own properties
-  totalSupplyByHour = new Array<number>(24);
+  
+  //totalSupplyByHour holds hours(in timestamp) with mint values per market  
+  // for example          "market1": { 1640537178873 : 1000 },{ 1640537278873 : 2000 }
+  totalSupplyByHour = new Map<string, Map<number, number>>();
 
   constructor(
+    private readonly localPersistService: LocalPersistService,
     private readonly chartService: ChartService,
     private readonly configService: ConfigService) {
     super();
@@ -40,8 +38,7 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
         uri: 'https://api.thegraph.com/subgraphs/name/graphprotocol/compound-v2',
         fetch,
       }),
-    });
-    this.totalSupplyByHour.fill(0);
+    });    
   }
 
   onModuleInit() {
@@ -53,73 +50,128 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
   }
 
   async listenToEvents() {
-    console.log("listen to events started");
-    var contract = this.getContract();
-    contract.on("Mint", (minter, mintAmount, mintTokens) => {
-      console.log(`Mint  minter: ${minter} amount: ${formatEther(mintAmount)} mintTokens: ${mintTokens} `);
-    });   
-    contract.on("Redeem", (redeemer, redeemAmount, redeemTokens) => {
-      console.log(`Redeem  redeemer: ${redeemer} amount: ${formatEther(redeemAmount)} mintTokens: ${redeemTokens} `);
+    // loop over each market and start listening to Mint and Reedem Event and long in console
+    var marketAddresses = this.configService.get("marketAddresses");
+    marketAddresses.forEach((address: string) => {
+      var contract = this.getContract(address);
+      
+      contract.on("Mint", (minter, mintAmount, mintTokens) => {
+        var timestamp = new Date().getTime();
+        this.updateTotalSupply(address, timestamp, mintAmount);
+        console.log(`Mint Event,\t  market:${address} minter: ${minter} amount: ${formatEther(mintAmount)} mintTokens: ${mintTokens} `);
+      });
+
+      contract.on("Redeem", (redeemer, redeemAmount, redeemTokens) => {
+        console.log(`Redeem Event \t market:${address} redeemer: ${redeemer} amount: ${formatEther(redeemAmount)} redeemTokens: ${redeemTokens} `);
+      });
     });
   }
 
 
   async fetchFromTheGraph() {
     // fetch, transform and save data from compound's the graph
+    // playground: https://thegraph.com/hosted-service/subgraph/graphprotocol/compound-v2?selected=playground
+    var marketAddresses = this.configService.get("marketAddresses");
     this.clientMetadata
       .query({
         query: gql(this.getFetchQuery()),
-      }).then((result) => {
+      }).then((result) => {        
         result.data.mintEvents.forEach(element => {
-          this.groupByHour(element);
+          var cTokenContractAddress = element["from"];
+          //needed to perisst this evnet?
+          if (marketAddresses.indexOf(cTokenContractAddress) !== -1) {
+            this.groupByHour(element);
+          }
         });
+
         console.log("Successfully retrived Mint events, Rows:", result.data.mintEvents.length);
-        this.storeTotalSupply();
-      }).catch((err) => {
+        this.storeAllTotalSupply();
+      }).catch((err: TypeError) => {
         console.log('Error fetching data: ', err);
       });
   }
 
-  groupByHour(item) {
-    var date = new Date(item['blockTime'] * 1000);
-    var hour = date.getHours();
-    this.totalSupplyByHour[hour] += +item['amount'];
+  //groupByHour preprcess and aggreagate mint data 
+  groupByHour(element) {
+    var date = new Date(element['blockTime'] * 1000);    
+    date.setUTCMinutes(0,0,0);
+    var cTokenAddress = element["from"];
+
+    if (this.totalSupplyByHour[cTokenAddress] == undefined){
+      this.totalSupplyByHour[cTokenAddress] = new Map<number, number>();
+    }
+    var oldValue = parseFloat(this.totalSupplyByHour[cTokenAddress][date.getTime()]) || 0;
+    var newValue = parseFloat(element['amount']);
+    this.totalSupplyByHour[cTokenAddress][date.getTime()] = oldValue + newValue;
   }
 
-  storeTotalSupply() {
-    this.totalSupplyByHour.forEach((value, index) => {
+  //storeAllTotalSupply store all mint amount values
+  storeAllTotalSupply() {
+    console.log("Total Supply \n", this.totalSupplyByHour);
+    
+    for (const [key, value] of  Object.entries(this.totalSupplyByHour)) {
+      console.log("****: ", key, value);
+    }
+    
+    for (const [marketAddress, hours ] of Object.entries(this.totalSupplyByHour)) {
+      console.log("persisting for market: ", marketAddress);
+      for (const [timestamp, amount] of Object.entries(hours)){
+        this.updateTotalSupply(marketAddress, parseInt(timestamp), parseFloat(amount+""));
+      };
+    };
+  }
+
+  //updateTotalSupply upsert one total supply item in the chart table  
+  updateTotalSupply(marketAddress: string, timestamp: number, amount: number) {
+    console.log("persisting total supply, market:", marketAddress, " timestamp:", timestamp, " amount:", amount);
+    var chartPoints = this.chartService.findByAddressAndTimestamp(marketAddress, timestamp);
+    console.log("chartPoints:", chartPoints);
+    if (chartPoints.length == 0){
       const c: Chart = {
         id: uuid(),
-        timestamp: new Date().getTime(),
-        value: value,
-        address: "address1"
+        timestamp: timestamp,
+        value: amount,
+        address: marketAddress
       }
+  
       this.chartService.create(c).then(() => {
-        console.log("inserted in db, Index:", index, "Value", value);
-      })
-        .catch(err => {
-          console.log("Error in storing total supply, err:", err);
-        });
-    });
+        console.log("Chart Point created successfully. Market:", marketAddress," Timestamp:", timestamp, " Amount:", amount);
+      }).catch(err => {
+          console.log("Error in creating total supply, err:", err);
+      });
+    }else{
+      //update chartPoint
+
+      const c: Chart = {
+        id: chartPoints[0].id,
+        timestamp: chartPoints[0].timestamp,
+        value: chartPoints[0].amount,
+        address: chartPoints[0].marketAddress
+      }
+      this.chartService.update(chartPoints[0].id, c).then(() => {
+        console.log("Chart Point updated successfully. Market:", marketAddress," Timestamp:", timestamp, " Amount:", amount);
+      }).catch(err => {
+          console.log("Error in updating total supply, err:", err);
+      });
+    }
   }
 
+    
+  //getFetchQuery return a graph query to fetch data
   getFetchQuery() {
-    var start = new Date();
-    start.setUTCHours(0, 0, 0, 0);
-    var lastDateTimestamp = start.getTime() / 1000;
-    console.log(lastDateTimestamp);
+    console.log("lastFetchTime:", this.lastFetchTime());
     return `
         {
           mintEvents(
             where: {
-                    blockTime_gt : ${lastDateTimestamp}
+                    blockTime_gt : ${this.lastFetchTime()}
             },
             skip: 0, 
             orderBy : blockTime,
             orderDirection : asc)
           {
             amount
-            to
+            from
             blockTime
             cTokenSymbol
           }
@@ -127,38 +179,41 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
         `
   }
 
-  getContract() {
-    var netName = "mainnet"
-    const address = "0xdac17f958d2ee523a2206206994597c13d831ec7";
-    const kovenAddress = "0x41b5844f4680a8c38fbb695b7f9cfd1f64474a72"
-    const mainnetAddress = "0x4ddc2d193948926d02f9b1fe9e1daa0718270ed5"
+  // getContract get an compound smart contract address and return an contract object.
+  // please find the contract addresses from the below link:
+  // https://compound.finance/docs#networks
+  // to fetch data for a contract, please set contract address in config.ts file, in marketAddresses property
+  // currently kovan and mainnet network are supporting now. to support more network please downlaod abi 
+  // json file from above link and put in the the path.
+  // also you should update abiPath property in the config.ts file
+  getContract(marketAddress: string) {
+    var netName = this.configService.get("netName");
 
-    if (netName == "mainnet"){ 
-      const provider = new ethers.providers.InfuraProvider(netName, process.env.projectId);
-      const abi = JSON.parse(readFileSync('./src/collector/mainnet_cETH.abi', 'utf8'));
-      const contract = new ethers.Contract(mainnetAddress, abi, provider);
-      contract.name().then(n => {
-        console.log(n);
-      }).catch(e => {
-        console.log(e);
-      });
-      return contract
-    }else{
-      const provider = new ethers.providers.InfuraProvider(netName, process.env.projectId);
-      const abi = JSON.parse(readFileSync('./src/collector/kovan_cETH.abi','utf8'));
-      const contract = new ethers.Contract(kovenAddress, abi, provider);
-      contract.name().then(n => {
-        console.log(n);
-      }).catch(e => {
-        console.log(e);
-      });  
-      return contract
-    }    
+    const provider = new ethers.providers.InfuraProvider(netName, this.configService.get("infuraProjectId"));
+    const abi = JSON.parse(readFileSync(this.configService.get("abiPath"), 'utf8'));
+    const contract = new ethers.Contract(marketAddress, abi, provider);
 
+    contract.name().then(n => {
+      console.log(n);
+    }).catch((e: TypeError) => {
+      console.log("Error in connecting to contract ", marketAddress, e);
+    });
+    return contract;
   }
 
-}
-function chart(chart: any) {
-  throw new Error('Function not implemented.');
+  //lastFetchTime return the last time successfully retrieved graph data or event received.
+  //due to the multiple stop/start application we need to prevent duplicate insert the total supply 
+  //in the db so, we save the last fetch time.
+  //event listeners also will update the lastFetchTime after event income.
+  //for the first time the lastFetchTime is the beginning of the current day.
+  lastFetchTime() {
+    var start = this.localPersistService.read()["lastFetchTime"];
+    if (start == undefined) {
+      var now = new Date();
+      now.setUTCHours(0, 0, 0, 0);
+      return Math.floor(now.getTime() / 1000);
+    }
+    return Math.floor(start / 1000);
+  }
 }
 

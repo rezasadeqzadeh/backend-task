@@ -3,7 +3,7 @@ import { ChartSchema } from './chart.schema';
 import { ChartService } from './chart.service';
 import { Module } from '@nestjs/common';
 
-@Module({
+@Module({ 
   imports: [
     DynamooseModule.forFeature([{ name: 'Chart', schema: ChartSchema }]),
   ],

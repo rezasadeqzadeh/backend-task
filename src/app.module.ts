@@ -4,6 +4,7 @@ import { ChartModule } from './chart/chart.module';
 import { ConfigModule } from '@nestjs/config';
 import { CollectorModule } from './collector/collector.module';
 import {config} from  "./config"
+import { LocalPersistModule } from './localpersist/localpersist.module';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import {config} from  "./config"
     }),
     CollectorModule,
     ChartModule,
-    
+    LocalPersistModule
   ],
 })
 export class ApplicationModule {}

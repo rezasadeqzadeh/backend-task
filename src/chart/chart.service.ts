@@ -21,6 +21,23 @@ export class ChartService {
     return this.chartModel.get(key);
   }
 
+  findByAddressAndTimestamp(address : string, timestamp : number) {
+    this.chartModel
+    .query('address')
+    .eq(address)
+    .where('timestamp')
+    .eq(timestamp)
+    .exec( (error , result) => {
+      if(error){
+        console.log("error in fetching chartModel, err", error);
+        return [];
+      }else{
+        return result; 
+      }
+    });
+    return [];
+  }
+  
   // useful for API endpoint
   findMany(address: string, inLast?: 'day') {
     return this.chartModel
