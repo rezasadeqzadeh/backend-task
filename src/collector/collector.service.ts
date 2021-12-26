@@ -1,5 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectModel, Model } from 'nestjs-dynamoose';
+import { readFileSync } from 'fs';
+
 import {
   ApolloClient,
   gql,
@@ -13,6 +15,8 @@ import { ConfigService } from '@nestjs/config';
 import { v4 as uuid } from 'uuid';
 import { TransactionSupport } from 'nestjs-dynamoose';
 import { Chart, ChartKey } from 'src/chart/chart.interface';
+import { ethers } from 'ethers';
+import { formatEther } from 'ethers/lib/utils';
 
 const getLatestIndexedBlock = `
 query {
@@ -50,9 +54,15 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
 
   async listenToEvents() {
     console.log("listen to events started");
-
-    // start event listeners
+    var contract = this.getContract();
+    contract.on("Mint", (minter, mintAmount, mintTokens) => {
+      console.log(`Mint  minter: ${minter} amount: ${formatEther(mintAmount)} mintTokens: ${mintTokens} `);
+    });   
+    contract.on("Redeem", (redeemer, redeemAmount, redeemTokens) => {
+      console.log(`Redeem  redeemer: ${redeemer} amount: ${formatEther(redeemAmount)} mintTokens: ${redeemTokens} `);
+    });
   }
+
 
   async fetchFromTheGraph() {
     // fetch, transform and save data from compound's the graph
@@ -115,6 +125,36 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
           }
         }
         `
+  }
+
+  getContract() {
+    var netName = "mainnet"
+    const address = "0xdac17f958d2ee523a2206206994597c13d831ec7";
+    const kovenAddress = "0x41b5844f4680a8c38fbb695b7f9cfd1f64474a72"
+    const mainnetAddress = "0x4ddc2d193948926d02f9b1fe9e1daa0718270ed5"
+
+    if (netName == "mainnet"){ 
+      const provider = new ethers.providers.InfuraProvider(netName, process.env.projectId);
+      const abi = JSON.parse(readFileSync('./src/collector/mainnet_cETH.abi', 'utf8'));
+      const contract = new ethers.Contract(mainnetAddress, abi, provider);
+      contract.name().then(n => {
+        console.log(n);
+      }).catch(e => {
+        console.log(e);
+      });
+      return contract
+    }else{
+      const provider = new ethers.providers.InfuraProvider(netName, process.env.projectId);
+      const abi = JSON.parse(readFileSync('./src/collector/kovan_cETH.abi','utf8'));
+      const contract = new ethers.Contract(kovenAddress, abi, provider);
+      contract.name().then(n => {
+        console.log(n);
+      }).catch(e => {
+        console.log(e);
+      });  
+      return contract
+    }    
+
   }
 
 }
