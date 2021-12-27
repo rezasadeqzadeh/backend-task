@@ -9,11 +9,10 @@ $ npm install
 ## Running the app
 
 ```bash
-# install DDB
-$ npm run ddb:install
-
 # start DDB
-$ npm run ddb:start
+sudo docker-compose up -d
+
+Please set DDB credentials to temp value
 
 # watch mode
 $ npm run start:dev
