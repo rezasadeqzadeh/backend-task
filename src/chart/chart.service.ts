@@ -22,33 +22,29 @@ export class ChartService {
   }
 
   findByAddressAndTimestamp(address : string, timestamp : number) {
-    this.chartModel
-    .query('address')
+    return this.chartModel
+    .query("address")
     .eq(address)
-    .where('timestamp')
-    .eq(timestamp)
-    .exec( (error , result) => {
-      if(error){
-        console.log("error in fetching chartModel, err", error);
-        return [];
-      }else{
-        return result; 
-      }
-    });
-    return [];
+    .where("timestamp")
+    .eq(timestamp).
+    exec();
   }
   
   // useful for API endpoint
-  findMany(address: string, inLast?: 'day') {
-    return this.chartModel
-      .query('address')
+  findMany(address: string, limitFields : boolean) {    
+    var query = this.chartModel
+      .query('address')    
       .eq(address)
       .where('timestamp')
-      .ge(Date.now() - 8.64e7) // get results from last day
-      .exec();
+      .ge(Date.now() - 8.64e7)
+    if (limitFields){
+      query.attributes(["value", "timestamp"])
+    }
+    return query.exec()
   }
 
   findAll() {
     return this.chartModel.scan().exec();
   }
 }
+

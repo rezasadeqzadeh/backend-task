@@ -56,8 +56,13 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
       var contract = this.getContract(address);
       
       contract.on("Mint", (minter, mintAmount, mintTokens) => {
-        var timestamp = new Date().getTime();
-        this.updateTotalSupply(address, timestamp, mintAmount);
+        var timestamp = new Date();
+        timestamp.setUTCMinutes(0,0,0);
+        var amount = mintAmount.getValue();
+        console.log("bigDecimal amount:", amount);
+        this.updateTotalSupply(address, timestamp.getTime(), mintAmount);
+        this.localPersistService.persist({lastFetchTime : new Date().getTime()});
+        console.log("saved lastFetchTime in settings");    
         console.log(`Mint Event,\t  market:${address} minter: ${minter} amount: ${formatEther(mintAmount)} mintTokens: ${mintTokens} `);
       });
 
@@ -75,7 +80,7 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
     this.clientMetadata
       .query({
         query: gql(this.getFetchQuery()),
-      }).then((result) => {        
+      }).then((result) => {
         result.data.mintEvents.forEach(element => {
           var cTokenContractAddress = element["from"];
           //needed to perisst this evnet?
@@ -83,9 +88,8 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
             this.groupByHour(element);
           }
         });
-
-        console.log("Successfully retrived Mint events, Rows:", result.data.mintEvents.length);
         this.storeAllTotalSupply();
+        console.log("Successfully retrived Mint events, Rows:", result.data.mintEvents.length);
       }).catch((err: TypeError) => {
         console.log('Error fetching data: ', err);
       });
@@ -93,7 +97,7 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
 
   //groupByHour preprcess and aggreagate mint data 
   groupByHour(element) {
-    var date = new Date(element['blockTime'] * 1000);    
+    var date = new Date(element['blockTime'] * 1000);  
     date.setUTCMinutes(0,0,0);
     var cTokenAddress = element["from"];
 
@@ -106,57 +110,57 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
   }
 
   //storeAllTotalSupply store all mint amount values
-  storeAllTotalSupply() {
-    console.log("Total Supply \n", this.totalSupplyByHour);
-    
-    for (const [key, value] of  Object.entries(this.totalSupplyByHour)) {
-      console.log("****: ", key, value);
-    }
-    
+  async storeAllTotalSupply() {
     for (const [marketAddress, hours ] of Object.entries(this.totalSupplyByHour)) {
       console.log("persisting for market: ", marketAddress);
       for (const [timestamp, amount] of Object.entries(hours)){
         this.updateTotalSupply(marketAddress, parseInt(timestamp), parseFloat(amount+""));
       };
     };
+    this.localPersistService.persist({lastFetchTime : new Date().getTime()});
+    console.log("saved lastFetchTime in settings");          
   }
 
   //updateTotalSupply upsert one total supply item in the chart table  
   updateTotalSupply(marketAddress: string, timestamp: number, amount: number) {
     console.log("persisting total supply, market:", marketAddress, " timestamp:", timestamp, " amount:", amount);
     var chartPoints = this.chartService.findByAddressAndTimestamp(marketAddress, timestamp);
-    console.log("chartPoints:", chartPoints);
-    if (chartPoints.length == 0){
-      const c: Chart = {
-        id: uuid(),
-        timestamp: timestamp,
-        value: amount,
-        address: marketAddress
-      }
-  
-      this.chartService.create(c).then(() => {
-        console.log("Chart Point created successfully. Market:", marketAddress," Timestamp:", timestamp, " Amount:", amount);
-      }).catch(err => {
-          console.log("Error in creating total supply, err:", err);
-      });
-    }else{
-      //update chartPoint
-
-      const c: Chart = {
-        id: chartPoints[0].id,
-        timestamp: chartPoints[0].timestamp,
-        value: chartPoints[0].amount,
-        address: chartPoints[0].marketAddress
-      }
-      this.chartService.update(chartPoints[0].id, c).then(() => {
-        console.log("Chart Point updated successfully. Market:", marketAddress," Timestamp:", timestamp, " Amount:", amount);
-      }).catch(err => {
-          console.log("Error in updating total supply, err:", err);
-      });
-    }
-  }
-
+    chartPoints
+    .then( (result) => {
+      if (result.count == 0){
+        const c: Chart = {
+          id: uuid(),
+          timestamp: timestamp,
+          value: amount,
+          address: marketAddress
+        }
     
+        this.chartService.create(c).then(() => {
+          console.log("Chart Point created successfully. Market:", marketAddress," Timestamp:", timestamp, " Amount:", amount);
+        }).catch(err => {
+            console.log("Error in creating total supply, err:", err);
+        });
+      }else{
+        //update chartPoint
+        const c  = {
+          value: amount + result[0]["value"]
+        }
+        var chartKey : ChartKey = {
+            id: result[0]["id"],
+            timestamp: result[0]["timestamp"]
+        }
+        this.chartService.update(chartKey, c).then(() => {
+          console.log("Chart Point updated successfully. Market:", marketAddress," Timestamp:", timestamp, " Amount:", amount);
+        }).catch(err => {
+            console.log("Error in updating total supply, err:", err);
+        });
+      }
+    })
+    .catch( (err) => {
+      console.log(err);
+    });
+
+  }    
   //getFetchQuery return a graph query to fetch data
   getFetchQuery() {
     console.log("lastFetchTime:", this.lastFetchTime());

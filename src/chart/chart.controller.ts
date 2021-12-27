@@ -10,7 +10,7 @@ export class ChartController{
 
     @Get("supply/:address")
     getSupplyData(@Param("address") address){
-        return this.chartService.findMany(address);
+        return this.chartService.findMany(address, true);
     }
 
 }
