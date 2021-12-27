@@ -82,7 +82,6 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
         let amount = parseFloat(mintAmount);
         this.updateTotalSupply(address, timestamp.getTime(), amount);
         this.localPersistService.persist({ lastFetchTime: new Date().getTime() });
-        console.debug("saved lastFetchTime in settings");
         console.debug(`Mint Event,\t  market:${address} minter: ${minter} amount: ${formatEther(mintAmount)} mintTokens: ${mintTokens} `);
       });
 
@@ -216,12 +215,6 @@ export class CollectorService extends TransactionSupport implements OnModuleInit
     const provider = new ethers.providers.InfuraProvider(netName, this.configService.get("infuraProjectId"));
     const abi = JSON.parse(readFileSync(this.configService.get("abiPath"), 'utf8'));
     const contract = new ethers.Contract(marketAddress, abi, provider);
-
-    contract.name().then(n => {
-      console.debug(n);
-    }).catch((e: TypeError) => {
-      console.debug("Error in connecting to contract ", marketAddress, e);
-    });
     return contract;
   }
 

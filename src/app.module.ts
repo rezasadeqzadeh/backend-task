@@ -20,8 +20,8 @@ import { LocalPersistModule } from './localpersist/localpersist.module';
         secretAccessKey: 'temp',
       },
       model: {
-        create: true
-      },
+        create: true,        
+      },      
     }),
     CollectorModule,
     ChartModule,

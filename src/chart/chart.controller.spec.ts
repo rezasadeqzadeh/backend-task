@@ -8,6 +8,7 @@ import { LocalPersistModule } from "../localpersist/localpersist.module";
 import { CollectorModule } from "../collector/collector.module";
 import * as request from 'supertest';
 import { ConfigService } from "dynamoose/dist/aws/sdk";
+import { DynamooseModule } from "nestjs-dynamoose";
 
 describe('ChartController', () => {
 
@@ -16,7 +17,7 @@ describe('ChartController', () => {
 
     beforeAll(async () => {
         const moduleRef = await Test.createTestingModule({
-            imports: [ChartModule, CollectorModule, LocalPersistModule, ConfigService],
+            imports: [ChartModule, CollectorModule, LocalPersistModule, ConfigService, DynamooseModule],
         })
             .overrideProvider([CollectorService, ChartService, LocalPersistService])
             .useValue(catsService)
