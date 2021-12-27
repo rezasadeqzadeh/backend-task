@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ChartModule } from 'src/chart/chart.module';
-import { LocalPersistModule } from 'src/localpersist/localpersist.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ChartModule } from '../chart/chart.module';
+import { LocalPersistModule } from '../localpersist/localpersist.module';
 import { CollectorService } from './collector.service';
 
 @Module({
-  imports: [ChartModule, LocalPersistModule],
-  providers: [CollectorService],
+  imports: [ChartModule, LocalPersistModule, ConfigModule],
+  providers: [CollectorService, ConfigService] ,
   exports: [],
 })
 export class CollectorModule {}

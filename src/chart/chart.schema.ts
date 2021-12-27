@@ -5,28 +5,28 @@ export const ChartSchema = new dynamoose.Schema({
     // any unique id of your choice
     // i.e. address-timestamp
     type: String,
-    hashKey: true  
+    hashKey: true
   },
   timestamp: {
     // the timestamp of the current hour always normalized to
     // the start minute of each hour i.e. 08:00-08:59 = 08:00:00
     type: Number,
-    required: true,  
-    "rangeKey": true,
-    index: {
-      "global": true,
+    required: true,
+    index: {      
+      global: true,
     },
   },
   value: {
     // the supply amount in the current hour
-    type: Number    
+    type: Number
   },
   address: {
     // the address of the supply contract
     type: String,
     required: true,
     index: {
-      "global": true
+      "global": true,
+      rangeKey: "timestamp",
     }
   }
 });
